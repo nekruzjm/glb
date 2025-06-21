@@ -24,11 +24,11 @@ type backend struct {
 	reqCount int
 }
 
-var ErrEmptyBackends = errors.New("balancer err: empty backends")
+var ErrNoBackends = errors.New("balancer err: empty backends")
 
 func New(backends []string) (Balancer, error) {
 	if len(backends) == 0 {
-		return nil, ErrEmptyBackends
+		return nil, ErrNoBackends
 	}
 
 	var urls = make([]backend, 0, len(backends))

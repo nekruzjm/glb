@@ -2,6 +2,7 @@ package config
 
 import (
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -11,6 +12,7 @@ type Config interface {
 	GetInt(key string) int
 	GetBool(key string) bool
 	GetStringSlice(key string) []string
+	GetDuration(key string) time.Duration
 }
 
 type config struct {
@@ -48,6 +50,10 @@ func (c *config) GetString(key string) string {
 
 func (c *config) GetInt(key string) int {
 	return c.cfg.GetInt(key)
+}
+
+func (c *config) GetDuration(key string) time.Duration {
+	return c.cfg.GetDuration(key)
 }
 
 func (c *config) GetBool(key string) bool {

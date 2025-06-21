@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/nekruzjm/glb/internal/balancer"
+	"github.com/nekruzjm/glb/internal/heartbeat"
 	"github.com/nekruzjm/glb/pkg/config"
 	"github.com/nekruzjm/glb/pkg/logger"
 )
@@ -23,7 +25,7 @@ func main() {
 	backends := cfg.GetStringSlice("backends")
 	lb, err := balancer.New(backends)
 	if err != nil {
-		if errors.Is(err, balancer.ErrEmptyBackends) {
+		if errors.Is(err, balancer.ErrNoBackends) {
 			log.Warning("empty backends", zap.Error(err))
 			return
 		}
@@ -57,6 +59,33 @@ func main() {
 		}
 	}()
 
+	doneCh := make(chan struct{})
+	hb := heartbeat.New(cfg, log)
+
+	go func() {
+		var (
+			hbBackends = cfg.GetStringSlice("heartbeat.backends")
+			interval   = cfg.GetDuration("heartbeat.interval")
+			ticker     = time.NewTicker(interval * time.Second)
+		)
+		for {
+			select {
+			case <-ticker.C:
+				err = hb.Run(doneCh, hbBackends)
+				if err != nil {
+					if errors.Is(err, heartbeat.ErrNoBackends) {
+						log.Warning("empty backends", zap.Error(err))
+					} else {
+						log.Error("err occurred", zap.Error(err), zap.Strings("backends", hbBackends))
+					}
+				}
+			case <-doneCh:
+				log.Info("Heartbeat stopped")
+				return
+			}
+		}
+	}()
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
@@ -66,6 +95,7 @@ func main() {
 
 	log.Flush()
 	_ = server.Shutdown(context.Background())
+	hb.Stop(doneCh)
 
 	log.Info("Application stopped")
 }
