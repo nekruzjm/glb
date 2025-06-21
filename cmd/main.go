@@ -1,21 +1,71 @@
 package main
 
 import (
-  "fmt"
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httputil"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"go.uber.org/zap"
+
+	"github.com/nekruzjm/glb/internal/balancer"
+	"github.com/nekruzjm/glb/pkg/config"
+	"github.com/nekruzjm/glb/pkg/logger"
 )
 
-//TIP <p>To run your code, right-click the code and select <b>Run</b>.</p> <p>Alternatively, click
-// the <icon src="AllIcons.Actions.Execute"/> icon in the gutter and select the <b>Run</b> menu item from here.</p>
-
 func main() {
-  //TIP <p>Press <shortcut actionId="ShowIntentionActions"/> when your caret is at the underlined text
-  // to see how GoLand suggests fixing the warning.</p><p>Alternatively, if available, click the lightbulb to view possible fixes.</p>
-  s := "gopher"
-  fmt.Println("Hello and welcome, %s!", s)
+	cfg := config.New()
+	log := logger.New(cfg)
 
-  for i := 1; i <= 5; i++ {
-	//TIP <p>To start your debugging session, right-click your code in the editor and select the Debug option.</p> <p>We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-	// for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.</p>
-	fmt.Println("i =", 100/i)
-  }
+	backends := cfg.GetStringSlice("backends")
+	lb, err := balancer.New(backends)
+	if err != nil {
+		if errors.Is(err, balancer.ErrEmptyBackends) {
+			log.Warning("empty backends", zap.Error(err))
+			return
+		}
+		log.Error("err occurred", zap.Error(err), zap.Strings("backends", backends))
+		return
+	}
+
+	selectedBackend := lb.Random()
+
+	handle := func(rp *httputil.ReverseProxy) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			r.Host = selectedBackend.Host
+			r.URL.Scheme = selectedBackend.Scheme
+			rp.ServeHTTP(w, r)
+		}
+	}
+
+	router := http.NewServeMux()
+	router.HandleFunc("/", handle(httputil.NewSingleHostReverseProxy(selectedBackend)))
+
+	server := &http.Server{
+		Addr:    ":" + cfg.GetString("port"),
+		Handler: router,
+	}
+
+	go func() {
+		log.Info("Application started", zap.String("addr", server.Addr))
+		if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("Error starting server", zap.Error(err))
+			return
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	sign := <-stop
+
+	log.Info("Received signal", zap.String("signal", sign.String()))
+
+	log.Flush()
+	_ = server.Shutdown(context.Background())
+
+	log.Info("Application stopped")
 }

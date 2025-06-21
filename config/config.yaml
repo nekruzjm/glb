@@ -1,0 +1,12 @@
+port: 8080
+backends:
+  - http://localhost:9998
+  - http://localhost:9999
+logger:
+  env: "local"
+  level: "debug"
+  filename: "app.log"
+  maxSize: 200
+  maxBackups: 10
+  maxAge: 30
+
