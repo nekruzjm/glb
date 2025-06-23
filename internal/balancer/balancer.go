@@ -2,11 +2,13 @@ package balancer
 
 import (
 	"errors"
-	"math/rand"
 	"net/url"
-	"sort"
 	"sync"
-	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/nekruzjm/glb/pkg/config"
+	"github.com/nekruzjm/glb/pkg/logger"
 )
 
 type Balancer interface {
@@ -21,21 +23,24 @@ type balancer struct {
 
 type backend struct {
 	url      *url.URL
-	reqCount int
+	reqCount int32
+	weight   int
 }
 
-var ErrNoBackends = errors.New("balancer err: empty backends")
+func RegisterBackends(cfg config.Config, log logger.Logger) (Balancer, error) {
+	backends := cfg.GetStringSlice("backends")
 
-func New(backends []string) (Balancer, error) {
 	if len(backends) == 0 {
-		return nil, ErrNoBackends
+		log.Warning("balancer err: no backends provided")
+		return nil, errors.New("balancer err: empty backends")
 	}
 
 	var urls = make([]backend, 0, len(backends))
 	for _, b := range backends {
 		parsedUrl, err := url.Parse(b)
 		if err != nil {
-			return nil, errors.New("balancer err: " + err.Error())
+			log.Error("balancer err: failed to parse backend", zap.String("backend", b), zap.Error(err))
+			return nil, err
 		}
 
 		urls = append(urls, backend{
@@ -46,23 +51,4 @@ func New(backends []string) (Balancer, error) {
 	return &balancer{
 		backends: urls,
 	}, nil
-}
-
-func (b *balancer) Random() *url.URL {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return b.backends[r.Intn(len(b.backends))].url
-}
-
-func (b *balancer) LeastConnections() *url.URL {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	sort.Slice(b.backends, func(i, j int) bool {
-		return b.backends[i].reqCount < b.backends[j].reqCount
-	})
-
-	b.backends[0].reqCount++
-	return b.backends[0].url
 }

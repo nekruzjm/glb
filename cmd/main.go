@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httputil"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/nekruzjm/glb/internal/balancer"
 	"github.com/nekruzjm/glb/internal/heartbeat"
+	"github.com/nekruzjm/glb/internal/proxy"
 	"github.com/nekruzjm/glb/pkg/config"
 	"github.com/nekruzjm/glb/pkg/logger"
 )
@@ -22,69 +20,15 @@ func main() {
 	cfg := config.New()
 	log := logger.New(cfg)
 
-	backends := cfg.GetStringSlice("backends")
-	lb, err := balancer.New(backends)
+	server, err := proxy.New(cfg, log)
 	if err != nil {
-		if errors.Is(err, balancer.ErrNoBackends) {
-			log.Warning("empty backends", zap.Error(err))
-			return
-		}
-		log.Error("err occurred", zap.Error(err), zap.Strings("backends", backends))
 		return
 	}
-
-	selectedBackend := lb.Random()
-
-	handle := func(rp *httputil.ReverseProxy) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			r.Host = selectedBackend.Host
-			r.URL.Scheme = selectedBackend.Scheme
-			rp.ServeHTTP(w, r)
-		}
-	}
-
-	router := http.NewServeMux()
-	router.HandleFunc("/", handle(httputil.NewSingleHostReverseProxy(selectedBackend)))
-
-	server := &http.Server{
-		Addr:    ":" + cfg.GetString("port"),
-		Handler: router,
-	}
-
-	go func() {
-		log.Info("Application started", zap.String("addr", server.Addr))
-		if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error("Error starting server", zap.Error(err))
-			return
-		}
-	}()
 
 	doneCh := make(chan struct{})
 	hb := heartbeat.New(cfg, log)
 
-	go func() {
-		var (
-			hbBackends = cfg.GetStringSlice("heartbeat.backends")
-			interval   = cfg.GetDuration("heartbeat.interval")
-			ticker     = time.NewTicker(interval * time.Second)
-		)
-		for {
-			select {
-			case <-ticker.C:
-				err = hb.Run(doneCh, hbBackends)
-				if err != nil {
-					if errors.Is(err, heartbeat.ErrNoBackends) {
-						log.Warning("empty backends", zap.Error(err))
-					} else {
-						log.Error("err occurred", zap.Error(err), zap.Strings("backends", hbBackends))
-					}
-				}
-			case <-doneCh:
-				log.Info("Heartbeat stopped")
-				return
-			}
-		}
-	}()
+	go run(cfg, log, hb, doneCh)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -98,4 +42,30 @@ func main() {
 	hb.Stop(doneCh)
 
 	log.Info("Application stopped")
+}
+
+func run(cfg config.Config, log logger.Logger, hb heartbeat.HealthChecker, done <-chan struct{}) {
+	var (
+		hbBackends = cfg.GetStringSlice("heartbeat.backends")
+		hbInterval = cfg.GetDuration("heartbeat.interval")
+	)
+
+	ticker := time.NewTicker(hbInterval * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			err := hb.Run(done, hbBackends)
+			if err != nil {
+				if errors.Is(err, heartbeat.ErrNoBackends) {
+					log.Warning("empty backends", zap.Error(err))
+				} else {
+					log.Error("err occurred", zap.Error(err), zap.Strings("backends", hbBackends))
+				}
+			}
+		case <-done:
+			log.Info("Heartbeat stopped")
+			return
+		}
+	}
 }

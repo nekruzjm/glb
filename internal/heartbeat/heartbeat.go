@@ -12,9 +12,9 @@ import (
 	"github.com/nekruzjm/glb/pkg/logger"
 )
 
-type Checker interface {
+type HealthChecker interface {
 	Run(doneCh <-chan struct{}, backends []string) error
-	Stop(doneCh chan<- struct{})
+	Stop(doneCh chan struct{})
 }
 
 type heartbeat struct {
@@ -22,7 +22,7 @@ type heartbeat struct {
 	log    logger.Logger
 }
 
-func New(cfg config.Config, log logger.Logger) Checker {
+func New(cfg config.Config, log logger.Logger) HealthChecker {
 	return &heartbeat{
 		log: log,
 		client: &http.Client{
@@ -106,6 +106,6 @@ func (h *heartbeat) Run(doneCh <-chan struct{}, backends []string) error {
 	return nil
 }
 
-func (h *heartbeat) Stop(doneCh chan<- struct{}) {
-	doneCh <- struct{}{}
+func (h *heartbeat) Stop(doneCh chan struct{}) {
+	close(doneCh)
 }
