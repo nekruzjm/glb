@@ -1,21 +1,18 @@
-port: 8080
-backends:
-  - http://localhost:9997
-  - http://localhost:9998
-  - http://localhost:9999
+appPort: :8080
+metricPort: :9090
 
+backends:
+  - http://backend1
+  - http://backend2
+  - http://backend3
 
 heartbeat:
   interval: 5
   clientTimeout: 1
   backends:
-    - http://localhost:9997/healthz
-    - http://localhost:9998/healthz
-    - http://localhost:9999/healthz
-#  retries: 3
-#  backoff: 2s
-#  maxBackoff: 10s
-#  jitter: true
+    - http://backend1/healthz
+    - http://backend2/healthz
+    - http://backend3/healthz
 logger:
   env: "local"
   level: "debug"

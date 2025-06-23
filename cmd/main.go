@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/nekruzjm/glb/internal/heartbeat"
+	"github.com/nekruzjm/glb/internal/metric"
 	"github.com/nekruzjm/glb/internal/proxy"
 	"github.com/nekruzjm/glb/pkg/config"
 	"github.com/nekruzjm/glb/pkg/logger"
@@ -25,6 +26,8 @@ func main() {
 		return
 	}
 
+	metricServer := metric.New(cfg, log)
+
 	done := make(chan struct{})
 	hb := heartbeat.New(cfg, log)
 
@@ -37,11 +40,13 @@ func main() {
 
 	log.Info("Received signal", zap.String("signal", sign.String()))
 
-	log.Flush()
 	_ = proxyServer.Shutdown(context.Background())
+	_ = metricServer.Shutdown(context.Background())
 	hb.Stop(done)
+	log.Flush()
 
 	log.Info("Application stopped")
+	log.Info("Metrics stopped")
 }
 
 func runHeartBeat(cfg config.Config, log logger.Logger, hb heartbeat.HealthChecker, done <-chan struct{}) {

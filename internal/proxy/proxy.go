@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 
 	"go.uber.org/zap"
 
@@ -19,13 +18,25 @@ func New(cfg config.Config, log logger.Logger) (*http.Server, error) {
 		return nil, err
 	}
 
-	backend := lb.Random()
-
 	router := http.NewServeMux()
-	router.HandleFunc("/", handler(httputil.NewSingleHostReverseProxy(backend), backend))
 
-	var server = &http.Server{
-		Addr:    ":" + cfg.GetString("port"),
+	router.HandleFunc("/", func() http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			backend := lb.LeastConnections()
+
+			proxy := &httputil.ReverseProxy{
+				Director: func(req *http.Request) {
+					req.URL.Scheme = backend.Scheme
+					req.URL.Host = backend.Host
+					req.Host = backend.Host
+				},
+			}
+			proxy.ServeHTTP(w, r)
+		}
+	}())
+
+	server := &http.Server{
+		Addr:    cfg.GetString("appPort"),
 		Handler: router,
 	}
 
@@ -38,12 +49,4 @@ func New(cfg config.Config, log logger.Logger) (*http.Server, error) {
 	}()
 
 	return server, nil
-}
-
-func handler(rp *httputil.ReverseProxy, backend *url.URL) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		r.Host = backend.Host
-		r.URL.Scheme = backend.Scheme
-		rp.ServeHTTP(w, r)
-	}
 }

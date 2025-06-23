@@ -1,0 +1,67 @@
+version: "3.8"
+services:
+  lb:
+    build: .
+    image: my-lb:latest
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+    ports:
+      - "80:80"         # expose LB on host port 80
+    networks:
+      - lb-net
+
+  backend1:
+    image: hashicorp/http-echo:0.2.3
+    command: ["-listen=:5678","-text=OK"]
+    ports: ["9997:5678"]
+    networks:
+      - lb-net
+
+  backend2:
+    image: hashicorp/http-echo:0.2.3
+    command: ["-listen=:5678","-text=OK"]
+    ports: ["9998:5678"]
+    networks:
+      - lb-net
+
+  backend3:
+    image: hashicorp/http-echo:0.2.3
+    command: ["-listen=:5678","-text=OK"]
+    ports: ["9999:5678"]
+    networks:
+      - lb-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    ports:
+      - "9090:9090"
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "password"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  lb-net:
+    driver: bridge

@@ -22,9 +22,10 @@ type balancer struct {
 }
 
 type backend struct {
-	url      *url.URL
-	reqCount int32
-	weight   int
+	url           *url.URL
+	reqCount      int32
+	weight        int
+	currentWeight int
 }
 
 func RegisterBackends(cfg config.Config, log logger.Logger) (Balancer, error) {
