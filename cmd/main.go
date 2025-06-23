@@ -20,15 +20,15 @@ func main() {
 	cfg := config.New()
 	log := logger.New(cfg)
 
-	server, err := proxy.New(cfg, log)
+	proxyServer, err := proxy.New(cfg, log)
 	if err != nil {
 		return
 	}
 
-	doneCh := make(chan struct{})
+	done := make(chan struct{})
 	hb := heartbeat.New(cfg, log)
 
-	go run(cfg, log, hb, doneCh)
+	go runHeartBeat(cfg, log, hb, done)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -38,13 +38,13 @@ func main() {
 	log.Info("Received signal", zap.String("signal", sign.String()))
 
 	log.Flush()
-	_ = server.Shutdown(context.Background())
-	hb.Stop(doneCh)
+	_ = proxyServer.Shutdown(context.Background())
+	hb.Stop(done)
 
 	log.Info("Application stopped")
 }
 
-func run(cfg config.Config, log logger.Logger, hb heartbeat.HealthChecker, done <-chan struct{}) {
+func runHeartBeat(cfg config.Config, log logger.Logger, hb heartbeat.HealthChecker, done <-chan struct{}) {
 	var (
 		hbBackends = cfg.GetStringSlice("heartbeat.backends")
 		hbInterval = cfg.GetDuration("heartbeat.interval")
