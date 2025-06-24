@@ -9,8 +9,6 @@ services:
       - backend3
     ports:
       - "8080:8080"
-    environment:
-      BACKENDS: "http://backend1:5678,http://backend2:5678,http://backend3:5678"
     networks:
       - glb-net
 

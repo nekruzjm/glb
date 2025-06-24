@@ -31,6 +31,9 @@ func New(cfg config.Config, log logger.Logger) (*http.Server, error) {
 					req.Host = backend.Host
 				},
 			}
+
+			log.Info("Reverse proxy routed to backend", zap.String("backend", backend.String()))
+
 			proxy.ServeHTTP(w, r)
 		}
 	}())
