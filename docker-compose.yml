@@ -1,37 +1,39 @@
 version: "3.8"
 services:
-  lb:
+  glb:
     build: .
-    image: my-lb:latest
+    image: glb:latest
     depends_on:
       - backend1
       - backend2
       - backend3
     ports:
-      - "80:80"         # expose LB on host port 80
+      - "8080:8080"
+    environment:
+      BACKENDS: "http://backend1:5678,http://backend2:5678,http://backend3:5678"
     networks:
-      - lb-net
+      - glb-net
 
   backend1:
     image: hashicorp/http-echo:0.2.3
     command: ["-listen=:5678","-text=OK"]
     ports: ["9997:5678"]
     networks:
-      - lb-net
+      - glb-net
 
   backend2:
     image: hashicorp/http-echo:0.2.3
     command: ["-listen=:5678","-text=OK"]
     ports: ["9998:5678"]
     networks:
-      - lb-net
+      - glb-net
 
   backend3:
     image: hashicorp/http-echo:0.2.3
     command: ["-listen=:5678","-text=OK"]
     ports: ["9999:5678"]
     networks:
-      - lb-net
+      - glb-net
 
   prometheus:
     image: prom/prometheus:latest
@@ -63,5 +65,5 @@ volumes:
   grafana-data:
 
 networks:
-  lb-net:
+  glb-net:
     driver: bridge

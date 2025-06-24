@@ -2,17 +2,17 @@ appPort: :8080
 metricPort: :9090
 
 backends:
-  - http://backend1
-  - http://backend2
-  - http://backend3
+  - http://backend1:5678
+  - http://backend2:5678
+  - http://backend3:5678
 
 heartbeat:
   interval: 5
   clientTimeout: 1
   backends:
-    - http://backend1/healthz
-    - http://backend2/healthz
-    - http://backend3/healthz
+    - http://backend1:5678/healthz
+    - http://backend2:5678/healthz
+    - http://backend3:5678/healthz
 logger:
   env: "local"
   level: "debug"
